@@ -1,6 +1,6 @@
 [phases.setup]
-nixpkgs = ["nodejs"]
-cmds = ["cd packages/server && npm install"]
+nixpkgs = ["nodejs-18_x"]
+cmds = ["cd packages/server && npx --yes npm install"]
 
 [start]
-cmd = "cd packages/server && npm start"
+cmd = "cd packages/server && npx --yes npm start"
