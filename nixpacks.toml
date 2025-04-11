@@ -1,4 +1,5 @@
 [phases.setup]
+nixpkgs = ["nodejs"]
 cmds = ["cd packages/server && npm install"]
 
 [start]
