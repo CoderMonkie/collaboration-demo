@@ -1,0 +1,21 @@
+{
+  "name": "collaboration-demo",
+  "version": "1.0.0",
+  "description": "collaboration demo",
+  "scripts": {
+    "dev": "concurrently \"pnpm start:server\" \"pnpm start:client\"",
+    "start:server": "pnpm -F server start",
+    "start:client": "pnpm -F client dev"
+  },
+  "keywords": [
+    "collaboration"
+  ],
+  "author": {
+    "name": "maonianyou",
+    "email": "maonianyou@gmail.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
