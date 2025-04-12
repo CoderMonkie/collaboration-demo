@@ -1,6 +1,8 @@
 [phases.setup]
-nixpkgs = ["nodejs-18_x"]
-cmds = ["cd packages/server && npx --yes npm install"]
+nixpkgs = ["nodejs-18_x", "npm-9_x"]
+aptPkgs = ["build-essential", "python3"]
+providers = ["node"]
+cmds = ["cd packages/server && npm install"]
 
 [start]
 cmd = "cd packages/server && npx --yes npm start"
