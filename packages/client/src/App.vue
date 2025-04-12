@@ -192,29 +192,50 @@ const connectToDocument = (document: IDocument) => {
 
       if (needsInitialization) {
         console.log('服务端标记文档需要初始化，原因:', metadata.get('reason'))
-        editor.value?.commands.setContent({
-          type: 'doc',
-          content: [
-            {
-              type: 'heading',
-              attrs: { level: 1 },
-              content: [{ type: 'text', text: '新文档' }]
-            },
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: '这是一个新创建的文档。' }]
-            }
-          ]
-        })
+
+        // editor.value?.commands.setContent({
+        //   type: 'doc',
+        //   content: [
+        //     {
+        //       type: 'heading',
+        //       attrs: { level: 1 },
+        //       content: [{ type: 'text', text: '新文档' }]
+        //     },
+        //     {
+        //       type: 'paragraph',
+        //       content: [{ type: 'text', text: '这是一个新创建的文档。' }]
+        //     }
+        //   ]
+        // })
+        const initializerId = metadata.get('initializerId');
+        if (initializerId === currentUser.value.id) {
+          // 当前用户被指定为初始化者
+          const htmlContent = metadata.get('htmlContent');
+          if (htmlContent) {
+            // 使用HTML内容初始化编辑器
+            editor.value?.commands.setContent(htmlContent, true);
+            console.log('作为指定初始化者初始化文档');
+            
+            // 通知服务器初始化完成
+            provider.value.awareness.setLocalStateField('documentInitialized', true);
         
-        metadata.delete('needsInitialization')
-        metadata.delete('reason')
+            metadata.delete('needsInitialization')
+            metadata.delete('htmlContent')
+            metadata.delete('reason')
+          }
+        } else {
+          console.log('等待指定用户初始化文档');
+        }
         // setTimeout(() => {
         // }, 100)
+      } else if (metadata.get('waitForInitialization')) {
+        console.log('等待文档初始化完成');
+        // 不执行setContent，等待数据同步
+        metadata.delete('waitForInitialization')
       }
     },
     onMessage: ({message}) => {
-      console.log('客户端: 收到消息', message.data)
+      // console.log('客户端: 收到消息', message.data)
     },
     onDisconnect: (args) => {
       console.log('客户端: 连接断开，原因:', args)

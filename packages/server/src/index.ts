@@ -26,6 +26,10 @@ const documentsStore = new Map([
     lastModified: new Date()
   }]
 ]);
+// 跟踪文档初始化状态
+const documentInitializationStatus = new Map();
+
+type DocInitStatus = 'initializing' | 'initialized' | 'initializationFailed';
 
 const server = Server.configure({
   port: process.env.PORT ? parseInt(process.env.PORT) : 1235,
@@ -64,8 +68,17 @@ const server = Server.configure({
       states: states.map(state => state.user),
       // context,
     })
-    // const doc = documentsStore.get(documentName);
-    // const content = doc ? doc.content : null;
+    
+    // 检查是否有用户完成了文档初始化
+    for (const [clientId, state] of states.entries()) {
+      if (state.documentInitialized) {
+        // 更新文档初始化状态
+        documentInitializationStatus.set(documentName, 'initialized');
+        console.log(`文档 ${documentName} 已由用户 ${state.user?.id || '未知用户'} 完成初始化`);
+        break;
+      }
+    }
+  
     return Promise.resolve()
   },
 
@@ -95,17 +108,53 @@ const server = Server.configure({
     // 以上方案的问题是，无法回显html富文本，不可能将每个标签节点都实例化一遍
     
     if (document.isEmpty('content')) {
+      // 检查文档是否已有缓存
       const content = documentsStore.get(documentName)?.content;
       if (content) {
         const ydoc = TiptapTransformer.toYdoc(content, 'content');
         document.merge(ydoc);
         console.log(`文档 ${documentName} 有缓存，使用服务端文档数据`);
       } else {
-        // 添加一个标记字段，表示需要前端初始化
+        // 检查文档是否正在被初始化
+        const initStatus = documentInitializationStatus.get(documentName);
         const metadata = document.getMap('metadata');
-        metadata.set('needsInitialization', true);
-        metadata.set('reason', 'documentNotFound');
-        console.log(`文档 ${documentName} 不存在，已添加初始化标记`);
+
+        if (initStatus === 'initialized') {
+          // 文档已经被初始化，但可能还没有同步到当前用户
+          // 不需要做任何事情，等待数据同步
+          console.log(`文档 ${documentName} 已被初始化，等待同步`);
+        } else if (initStatus === 'initializing') {
+          // 文档正在被其他用户初始化，标记为等待初始化完成
+          metadata.set('needsInitialization', false);
+          metadata.set('waitForInitialization', true);
+          console.log(`文档 ${documentName} 正在被其他用户初始化，标记为等待`);
+        } else {
+          // 获取当前文档的活跃用户列表
+          const docUsers = Array.from(activeUsers.entries())
+          .filter(([key]) => key.startsWith(`${documentName}:`))
+          .map(([_, userData]) => userData);
+        
+          // 如果有活跃用户，选择第一个作为初始化者
+          if (docUsers.length > 0) {
+            const initializer = docUsers[0];
+            
+            // 设置初始化标记
+            metadata.set('needsInitialization', true);
+            metadata.set('reason', 'documentNotFound');
+            metadata.set('initializerId', initializer.userId);
+            
+            // 模拟从API获取的HTML内容
+            const htmlContent = `<h1>从HTML初始化的文档</h1><p>这是一个从HTML内容初始化的文档示例。</p>`;
+            metadata.set('htmlContent', htmlContent);
+            
+            // 更新初始化状态
+            documentInitializationStatus.set(documentName, 'initializing');
+            console.log(`文档 ${documentName} 不存在，已指定用户 ${initializer.userId} 为初始化者`);
+          } else {
+            // 没有活跃用户，这种情况不应该发生
+            console.log(`文档 ${documentName} 没有活跃用户，无法指定初始化者`);
+          }
+        }
       }
     }
 
@@ -113,7 +162,7 @@ const server = Server.configure({
   },
   onStoreDocument: ({ documentName, document }) => {
     console.log(`保存文档: ${documentName}：${JSON.stringify(document)}`);
-    console.log('&& 文档内容:', documentsStore.get(documentName));
+    console.log('stored 文档内容:', documentsStore.get(documentName));
 
     try {
       // 将 Ydoc 转换为可存储的格式
