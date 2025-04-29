@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Editor, useEditor, EditorContent } from '@tiptap/vue-3'
+import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { HocuspocusProvider } from '@hocuspocus/provider'
-import { Doc, applyUpdate } from 'yjs'
+import { Doc } from 'yjs'
 import { Awareness } from 'y-protocols/awareness';
 import { onMounted, ref, shallowRef, onBeforeUnmount } from 'vue'
 
@@ -66,29 +67,23 @@ const initAwareness = () => {
     user: currentUser.value,
     color: currentUser.value.color,
     name: currentUser.value.name,
+    id: currentUser.value.id
   })
   
   // 监听其他用户状态变化
   awareness.value.on('change', () => {
     const states = Array.from(awareness.value.getStates().values()) as {user:IUser,name:string,color:string}[]
+    console.log('其他用户状态变化:', states)
     activeUsers.value = states
-      .filter(state => state.user?.id !== currentUser.value.id)
+      .filter(state => state.user && state.user.id !== currentUser.value.id) // 修改过滤条件
       .map(state => ({
-        name: state.name,
-        color: state.color
+        name: state.user.name, // 使用 user 对象中的属性
+        color: state.user.color
       }))
   })
 }
 
 const initEditor = () => {
-  // 断开之前的连接
-  if (provider.value) {
-    provider.value.destroy()
-  }
-
-  // 初始化awareness
-  initAwareness()
-
   const editorOptins = {
     extensions: [
       StarterKit.configure({
@@ -97,7 +92,15 @@ const initEditor = () => {
       Collaboration.configure({
         document: ydoc.value,
         field: 'content',
-      })
+      }),
+      CollaborationCursor.configure({
+        provider: provider.value,
+        user: {
+          name: currentUser.value.name,
+          color: currentUser.value.color,
+          id: currentUser.value.id,
+        },
+      }),
     ],
     editable: true,
     content: '',
@@ -124,16 +127,18 @@ const initEditor = () => {
 const switchDocument = (document:IDocument) => {
   console.log('切换到文档:', document)
   
-  // 先断开当前连接
-  if (provider.value) {
-    provider.value.destroy()
-    provider.value = null
-  }
-  
   // 销毁旧的编辑器实例
   if (editor.value) {
-    editor.value.destroy();
-    editor.value = undefined;
+    editor.value.destroy()
+    editor.value = undefined
+  }
+  
+  // 先断开当前连接
+  if (provider.value) {
+    // 清理awareness状态
+    awareness.value.setLocalState(null)
+    provider.value.destroy()
+    provider.value = null
   }
   
   // 更新当前文档
@@ -143,17 +148,15 @@ const switchDocument = (document:IDocument) => {
   ydoc.value = new Doc()
   activeUsers.value = []
   isConnected.value = false
+
+  // 初始化awareness
+  initAwareness()
   
   // 确保content字段存在
   ydoc.value.getXmlFragment('content')
   
-  // 初始化编辑器
-  initEditor()
-  
   // 连接到协作服务器
-  setTimeout(() => {
-    connectToDocument(document)
-  }, 100)
+  connectToDocument(document)
 }
 
 // 连接到协作服务器
@@ -189,6 +192,11 @@ const connectToDocument = (document: IDocument) => {
       // 检查是否需要初始化
       const metadata = ydoc.value.getMap('metadata')
       const needsInitialization = metadata.get('needsInitialization')
+
+      // 在同步完成后初始化编辑器
+      if (!editor.value) {
+        initEditor()
+      }
 
       if (needsInitialization) {
         console.log('服务端标记文档需要初始化，原因:', metadata.get('reason'))
@@ -257,9 +265,6 @@ onMounted(() => {
 
   // 初始化awareness
   initAwareness()
-
-  // 初始化编辑器
-  initEditor()
 
   // 连接到文档
   connectToDocument(currentDocument.value)
@@ -484,5 +489,31 @@ onBeforeUnmount(() => {
   justify-content: center;
   color: white;
   font-size: 0.8em;
+}
+
+/* 添加协作光标样式 */
+.collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  color: white;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px 3px 3px 0;
+  user-select: none;
+  pointer-events: none;
 }
 </style>
