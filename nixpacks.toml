@@ -1,8 +1,9 @@
-[phases.setup]
-nixpkgs = ["nodejs-18_x", "npm-9_x"]
-aptPkgs = ["build-essential", "python3"]
-providers = ["node"]
-cmds = ["cd packages/server && npm install"]
+# Railway Nixpacks configuration
 
-[start]
-cmd = "cd packages/server && npx --yes npm start"
+[phases]
+install = "pnpm install"
+build = "pnpm build"
+start = "pnpm start:server"
+
+[variables]
+NODE_ENV = "production"
