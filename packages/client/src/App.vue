@@ -164,7 +164,7 @@ const connectToDocument = (document: IDocument) => {
   
   // 创建新的provider连接
   provider.value = new HocuspocusProvider({
-    url: 'ws://localhost:1235',
+    url: import.meta.env.VITE_HOCUSPOCUS_URL,
     name: document.id, // 使用文档ID作为连接名称
     document: ydoc.value,
     awareness: awareness.value,
