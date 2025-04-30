@@ -15,4 +15,3 @@ cmd = "cd packages/server && pnpm start"
 [variables]
 NODE_ENV = "production"
 PROXY_WEBSOCKET=true
-PROXY_TIMEOUT=3600s  # 可选：延长超时时间（默认 60s）
