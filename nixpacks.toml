@@ -4,13 +4,13 @@
 nixPkgs = ['nodejs', 'nodePackages.pnpm']
 
 [phases.install]
-cmd = "pnpm install -r"
+cmd = ["pnpm install -r", "cd packages/server && pnpm i", "cd packages/client && pnpm i"]
 
 [phases.build]
-cmd = "pnpm build"
+cmd = "cd packages/client && pnpm build"
 
 [start]
-cmd = "pnpm start"
+cmd = "cd packages/server && pnpm start"
 
 [variables]
 NODE_ENV = "production"
