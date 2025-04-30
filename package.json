@@ -18,5 +18,9 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "pnpm": ">=10.0.0"  
   }
 }

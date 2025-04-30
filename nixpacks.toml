@@ -1,10 +1,10 @@
 # Railway Nixpacks configuration
 
 [phases.setup]
-nixPkgs = ['nodejs']
+nixPkgs = ['nodejs', 'nodePackages.pnpm']
 
 [phases.install]
-cmds = ["npm i -g pnpm", "pnpm install -r"]
+cmd = "pnpm install"
 
 [phases.build]
 cmd = "pnpm build"
