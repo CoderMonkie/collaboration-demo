@@ -14,4 +14,4 @@ cmd = "cd packages/server && pnpm start"
 
 [variables]
 NODE_ENV = "production"
-PORT = 1235
+PORT = "1235"
