@@ -9,29 +9,22 @@ import { Awareness } from 'y-protocols/awareness';
 import { onMounted, ref, shallowRef, onBeforeUnmount } from 'vue'
 
 interface IUser {
+  id: string;
   name: string;
   color: string;
-  id: string;
 }
+
+// 未连接状态的浅灰色
+const DISCONNECTED_COLOR = '#CCCCCC';
 
 // 生成随机用户信息
 const generateRandomUser = (): IUser => {
   const names = ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十']
-  const colors = [
-    '#7986CB', // 靛蓝色
-    '#81C784', // 绿色
-    '#64B5F6', // 蓝色
-    '#FFB74D', // 橙色
-    '#BA68C8', // 紫色
-    '#4DB6AC', // 青色
-    '#F06292', // 粉色
-    '#9575CD'  // 紫罗兰色
-  ]
   
   return {
     name: names[Math.floor(Math.random() * names.length)],
-    color: colors[Math.floor(Math.random() * colors.length)],
-    id: Math.random().toString(36).substring(2, 10)
+    color: DISCONNECTED_COLOR, // 初始使用浅灰色表示未连接状态
+    id: Math.random().toString(36).substring(2, 10),
   }
 }
 
@@ -50,36 +43,37 @@ const documents = ref<IDocument[]>([
 // 当前选中的文档
 const currentDocument = ref(documents.value[0])
 
-const currentUser = ref(generateRandomUser())
+const currentUser = ref<IUser>(generateRandomUser())
 const isConnected = ref(false)
 const ydoc = ref(new Doc())
 const provider = ref<any>(null)
 
-const activeUsers = ref<{name:string;color:string;}[]>([])
+const activeUsers = ref<IUser[]>([])
 const awareness = ref<any>(null)
 
 let editor = shallowRef<Editor|undefined>();
+
+const totalEditors = ref(1) // 新增总编辑人数
 
 // 初始化awareness
 const initAwareness = () => {
   awareness.value = new Awareness(ydoc.value)
   awareness.value.setLocalState({
     user: currentUser.value,
-    color: currentUser.value.color,
-    name: currentUser.value.name,
-    id: currentUser.value.id
   })
   
   // 监听其他用户状态变化
   awareness.value.on('change', () => {
-    const states = Array.from(awareness.value.getStates().values()) as {user:IUser,name:string,color:string}[]
+    const states = Array.from(awareness.value.getStates().values()) as {user:IUser}[]
     console.log('其他用户状态变化:', states)
     activeUsers.value = states
-      .filter(state => state.user && state.user.id !== currentUser.value.id) // 修改过滤条件
+      .filter(state => state.user && state.user.id !== currentUser.value.id)
       .map(state => ({
-        name: state.user.name, // 使用 user 对象中的属性
+        id: state.user.id,
+        name: state.user.name,
         color: state.user.color
       }))
+    totalEditors.value = states.length // 统计总人数（包含自己）
   })
 }
 
@@ -148,6 +142,9 @@ const switchDocument = (document:IDocument) => {
   ydoc.value = new Doc()
   activeUsers.value = []
   isConnected.value = false
+  
+  // 重置用户颜色为未连接状态
+  currentUser.value.color = DISCONNECTED_COLOR;
 
   // 初始化awareness
   initAwareness()
@@ -160,6 +157,8 @@ const switchDocument = (document:IDocument) => {
 }
 
 // 连接到协作服务器
+const connectionError = ref('') // 新增连接错误提示
+
 const connectToDocument = (document: IDocument) => {
   console.log('连接到文档:', document.id)
   
@@ -174,9 +173,77 @@ const connectToDocument = (document: IDocument) => {
       docName: document.docName // 传递文档名称
     },
     token: 'test-token', // 添加测试token
+    onAuthenticated: () => {
+      console.log('客户端: 认证成功')
+    },
     onConnect: () => {
       console.log('客户端: 连接成功')
       isConnected.value = true
+
+      // 连接成功后，请求服务端分配的颜色
+      provider.value.sendStateless(JSON.stringify({
+        type: 'requestUserColor',
+        userId: currentUser.value.id
+      }));
+    },
+    // 添加处理无状态消息的回调
+    onStateless: ({payload}) => {
+      try {
+        const data = JSON.parse(payload);
+        console.log('onStateless:', payload);
+        
+        // 处理服务端发送的颜色信息
+        if (data.type === 'userColor' && data.userId === currentUser.value.id) {
+          console.log('收到服务端分配的颜色:', data.color);
+          
+          // 更新用户颜色
+          currentUser.value.color = data.color;
+          
+          // 更新awareness中的颜色
+          awareness.value.setLocalState({
+            user: currentUser.value,
+          });
+          
+          // 如果编辑器已经初始化，需要更新光标颜色
+          if (editor.value) {
+            // 更新协作光标扩展的用户信息
+            const extensions = editor.value.extensionManager.extensions;
+            const collaborationCursorExtension = extensions.find(ext => ext.name === 'collaborationCursor');
+            
+            if (collaborationCursorExtension) {
+              collaborationCursorExtension.options.user = {
+                name: currentUser.value.name,
+                color: currentUser.value.color,
+                id: currentUser.value.id,
+              };
+            }
+          }
+        }
+
+        // 处理最大人数限制错误
+        if (data.type === 'error' && data.code === 'MAX_USERS_EXCEEDED') {
+          connectionError.value = data.message || '无法进入编辑，已达到同时编辑人数上限';
+          currentUser.value.color = DISCONNECTED_COLOR;
+          awareness.value.setLocalState({
+            user: currentUser.value,
+          });
+          // 连接后服务端检查是否可以编辑并通知客户端，接收通知后需确保此时编辑器已完成初始化，因此需要延时
+          setTimeout(() => {
+            editor.value?.setEditable(false);
+          });
+        }
+        // 可以编辑
+        if (data.type === 'info' && data.code === 'CAN_EDIT') {
+          connectionError.value = '';
+          provider.value.sendStateless(JSON.stringify({
+            type: 'requestUserColor',
+            userId: currentUser.value.id
+          }));
+          editor.value?.setEditable(true);
+        }
+      } catch (error) {
+        console.error('处理无状态消息时出错:', error);
+      }
     },
     onSynced: ({state}) => {
       console.log('客户端: 文档同步完成', state)
@@ -247,7 +314,7 @@ const connectToDocument = (document: IDocument) => {
     },
     onDisconnect: (args) => {
       console.log('客户端: 连接断开，原因:', args)
-      isConnected.value = false
+      isConnected.value = false;
     },
     onClose: () => {
       console.log('客户端: WebSocket关闭')
@@ -295,12 +362,18 @@ onBeforeUnmount(() => {
         <span class="user-name">{{ currentUser.name }}</span>
       </div>
       
+      <!-- 新增：总编辑人数 -->
+      <div class="total-editors">
+        <span v-if="connectionError">{{connectionError}}</span>
+        <span> | 当前总在线人数：{{ totalEditors }}</span>
+      </div>
+      
       <!-- 其他在线用户 -->
       <div class="other-users" v-if="activeUsers.length > 0">
-        <label>其他正在编辑该文档用户：</label>
+        <label>其他在线用户：</label>
         <span class="other-user" 
               v-for="user in activeUsers" 
-              :key="user.name"
+              :key="user.id"
               :style="{ backgroundColor: user.color }">
           {{ user.name.charAt(0) }}
         </span>
@@ -442,6 +515,10 @@ onBeforeUnmount(() => {
 }
 .user-name {
   font-weight: bold;
+}
+
+.total-editors {
+  color: #777;
 }
 
 .connection-status {

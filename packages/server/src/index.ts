@@ -29,6 +29,54 @@ const documentsStore = new Map([
 // 跟踪文档初始化状态
 const documentInitializationStatus = new Map();
 
+// 每个文档的最大编辑人数
+const MAX_USERS_PER_DOCUMENT = 6;
+
+// 预设颜色列表（不包含浅灰色）
+const COLORS = [
+  '#7986CB', // 靛蓝色
+  '#81C784', // 绿色
+  '#64B5F6', // 蓝色
+  '#FFB74D', // 橙色
+  '#BA68C8', // 紫色
+  '#4DB6AC', // 青色
+  '#F06292', // 粉色
+  '#9575CD', // 紫罗兰色
+  '#FF8A65', // 深橙色
+  '#4FC3F7'  // 浅蓝色
+];
+
+// 跟踪每个文档的颜色分配情况
+const documentColors = new Map();
+
+// 获取文档可用颜色
+function getAvailableColor(documentId: string) {
+  // 如果文档没有颜色分配记录，初始化一个
+  if (!documentColors.has(documentId)) {
+    documentColors.set(documentId, new Map());
+  }
+
+  const docColorMap = documentColors.get(documentId);
+
+  // 找到一个未被使用的颜色
+  for (const color of COLORS) {
+    let isUsed = false;
+    for (const [_, assignedColor] of docColorMap.entries()) {
+      if (assignedColor === color) {
+        isUsed = true;
+        break;
+      }
+    }
+
+    if (!isUsed) {
+      return color;
+    }
+  }
+
+  // 如果所有颜色都被使用了，返回第一个颜色（理论上不会发生，因为我们限制了用户数量）
+  return COLORS[0];
+}
+
 type DocInitStatus = 'initializing' | 'initialized' | 'initializationFailed';
 
 const server = Server.configure({
@@ -38,37 +86,127 @@ const server = Server.configure({
   async onConnect(data) {
     const userId = data.requestParameters.get('userId') || 'anonymous'
     const documentId = data.documentName
-    
+
     console.log('新的连接请求:', {
       userId,
       documentId,
       time: new Date().toISOString()
     })
 
-    // 记录活跃用户
+    // 清理可能存在的同一用户的旧连接记录
     const userKey = `${documentId}:${userId}`
+    if (activeUsers.has(userKey)) {
+      console.log(`用户 ${userId} 已有连接记录，清理旧记录`);
+      activeUsers.delete(userKey);
+      // 如果有颜色记录，也清理掉
+      if (documentColors.has(documentId)) {
+        documentColors.get(documentId).delete(userId);
+      }
+    }
+
+    // 检查文档当前活跃用户数量
+    // const docUsers = Array.from(activeUsers.entries())
+    //   .filter(([key]) => key.startsWith(`${documentId}:`))
+    //   .map(([_, userData]) => userData);
+
+    // 如果超过最大用户数，拒绝连接
+    // if (docUsers.length >= MAX_USERS_PER_DOCUMENT) {
+    //   console.log(`文档 ${documentId} 已达到最大编辑人数 ${MAX_USERS_PER_DOCUMENT}，拒绝连接`);
+    //   const err = new Error(JSON.stringify({
+    //     type: 'error',
+    //     code: 'MAX_USERS_EXCEEDED',
+    //     message: '文档已达到最大编辑人数限制'
+    //   }));
+    //   throw err;
+    // }
+
+    // 为用户分配颜色
+    const userColor = getAvailableColor(documentId);
+
+    // 如果文档没有颜色分配记录，初始化一个
+    if (!documentColors.has(documentId)) {
+      documentColors.set(documentId, new Map());
+    }
+
+    // 记录用户颜色
+    documentColors.get(documentId).set(userId, userColor);
+
+    // 记录活跃用户
+    // const userKey = `${documentId}:${userId}`
     activeUsers.set(userKey, {
       userId,
       documentId,
+      color: userColor,
       lastActive: new Date()
     })
 
-    return {
-      user: {
-        id: userId,
-        documentId
-      }
-    }
+    // TODO 更新到 awareness
+
+    // 客户端并无入参，无法返回数据
+    // return {
+    //   user: {
+    //     id: userId,
+    //     documentId,
+    //     color: userColor
+    //   }
+    // }
   },
-  
-  onAwarenessUpdate: ({ states, context, documentName }) => {
+  connected: ({ documentName, connection, connectionInstance }) => {
+    // 检查当前文档的活跃用户数量
+    const docUsers = Array.from(activeUsers.entries())
+      .filter(([key]) => key.startsWith(`${documentName}:`))
+      .map(([_, userData]) => userData);
+
+    if (docUsers.length > MAX_USERS_PER_DOCUMENT) {
+      connectionInstance.readOnly = true;
+      // 超出最大人数，主动通知客户端并断开连接
+      connectionInstance.sendStateless(JSON.stringify({
+        type: 'error',
+        code: 'MAX_USERS_EXCEEDED',
+        message: `无法进入编辑，文档已达到最大编辑人数限制${MAX_USERS_PER_DOCUMENT}人`
+      }));
+      console.log(`文档 ${documentName} 已超出最大编辑人数，已通知并断开连接`);
+    } else {
+      connectionInstance.readOnly = false;
+      connectionInstance.sendStateless(JSON.stringify({
+        type: 'info',
+        code: 'CAN_EDIT',
+        message: '你现在可以编辑文档'
+      }));
+      console.log('新的连接:', {
+        documentName,
+        connection,
+        time: new Date().toISOString()
+      });
+    }
+    return Promise.resolve();
+  },
+
+  onAuthenticate: ({ context, token, documentName, requestParameters }) => {
+    console.log('认证请求:', {
+      token,
+      context,
+      documentName,
+      time: new Date().toISOString()
+    })
+
+    context.user = {
+      id: requestParameters.get('userId'),
+    }
+
+    // 客户端并无入参，无法返回数据
+    return Promise.resolve();
+  },
+
+  onAwarenessUpdate: ({ states, context, documentName, awareness }) => {
     console.log('用户状态更新:', {
       documentName,
-      activeUsers: states.length,
-      states: states.map(state => state.user),
+      count: states.length,
+      states,
       // context,
+      activeUsers: activeUsers
     })
-    
+
     // 检查是否有用户完成了文档初始化
     for (const [clientId, state] of states.entries()) {
       if (state.documentInitialized) {
@@ -78,18 +216,88 @@ const server = Server.configure({
         break;
       }
     }
-  
+
     return Promise.resolve()
   },
 
+  // 处理无状态消息
+  onStateless: ({ documentName, connection, payload }) => {
+    try {
+      const data = JSON.parse(payload);
+
+      // 处理请求用户颜色的消息
+      if (data.type === 'requestUserColor' && data.userId) {
+        const userId = data.userId;
+        const userKey = `${documentName}:${userId}`;
+
+        console.log(`${userId} 请求颜色，连接状态readOnly:${connection.readOnly}`)
+
+        if (connection.readOnly) {
+          return Promise.resolve();
+        }
+
+        // 如果用户在活跃用户列表中，并且有分配的颜色
+        if (activeUsers.has(userKey)) {
+          const userData = activeUsers.get(userKey);
+
+          // 发送颜色信息回客户端
+          connection.sendStateless(JSON.stringify({
+            type: 'userColor',
+            userId: userId,
+            color: userData.color
+          }));
+
+          console.log(`发送用户 ${userId} 的颜色 ${userData.color} 到客户端`);
+        }
+      }
+    } catch (error) {
+      console.error('处理无状态消息时出错:', error);
+    }
+
+    return Promise.resolve();
+  },
+
   onDisconnect: (data) => {
-    const userId = data.context?.user?.id
+    // const userId = data.context?.user?.id
+    const userId = data.requestParameters.get('userId')
     const documentId = data.documentName
-    
+
+    console.log('断开连接:', {
+      data,
+      userId,
+      documentId,
+      time: new Date().toISOString()
+    })
     if (userId) {
+      // 释放用户的颜色
+      if (documentColors.has(documentId)) {
+        documentColors.get(documentId).delete(userId);
+      }
+
       activeUsers.delete(`${documentId}:${userId}`)
       console.log(`用户离开: ${userId}, 文档: ${documentId}`)
     }
+
+    const document = data.instance.documents.get(data.documentName);
+    if (document && document.connections) {
+      // 统计当前可编辑用户数量
+      const editableConnections = Array.from(document.connections.values()).filter(conn => conn.connection.readOnly === false);
+      const readOnlyConnections = Array.from(document.connections.values()).filter(conn => conn.connection.readOnly === true);
+      const canPromoteCount = MAX_USERS_PER_DOCUMENT - editableConnections.length;
+      if (canPromoteCount > 0 && readOnlyConnections.length > 0) {
+        // 只通知前 canPromoteCount 个只读用户
+        for (let i = 0; i < canPromoteCount && i < readOnlyConnections.length; i++) {
+          const conn = readOnlyConnections[i].connection;
+          conn.readOnly = false;
+          conn.sendStateless(JSON.stringify({
+            type: 'info',
+            code: 'CAN_EDIT',
+            message: '现在可以编辑文档'
+          }));
+        }
+      }
+    }
+
     return Promise.resolve()
   },
 
@@ -106,7 +314,7 @@ const server = Server.configure({
     // content.insert(0, [docNode]);
     // return Promise.resolve(document);
     // 以上方案的问题是，无法回显html富文本，不可能将每个标签节点都实例化一遍
-    
+
     if (document.isEmpty('content')) {
       // 检查文档是否已有缓存
       const content = documentsStore.get(documentName)?.content;
@@ -131,22 +339,22 @@ const server = Server.configure({
         } else {
           // 获取当前文档的活跃用户列表
           const docUsers = Array.from(activeUsers.entries())
-          .filter(([key]) => key.startsWith(`${documentName}:`))
-          .map(([_, userData]) => userData);
-        
+            .filter(([key]) => key.startsWith(`${documentName}:`))
+            .map(([_, userData]) => userData);
+
           // 如果有活跃用户，选择第一个作为初始化者
           if (docUsers.length > 0) {
             const initializer = docUsers[0];
-            
+
             // 设置初始化标记
             metadata.set('needsInitialization', true);
             metadata.set('reason', 'documentNotFound');
             metadata.set('initializerId', initializer.userId);
-            
+
             // 模拟从API获取的HTML内容
             const htmlContent = `<h1>从HTML初始化的文档</h1><p>这是一个从HTML内容初始化的文档示例。</p>`;
             metadata.set('htmlContent', htmlContent);
-            
+
             // 更新初始化状态
             documentInitializationStatus.set(documentName, 'initializing');
             console.log(`文档 ${documentName} 不存在，已指定用户 ${initializer.userId} 为初始化者`);
@@ -172,7 +380,7 @@ const server = Server.configure({
         content: prosemirrorJSON,
         lastModified: new Date()
       });
-      
+
     } catch (error) {
       console.log('store save 转换失败:', error);
     }
