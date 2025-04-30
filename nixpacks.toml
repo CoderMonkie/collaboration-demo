@@ -1,7 +1,7 @@
 # Railway Nixpacks configuration
 
 [phases.setup]
-nixPkgs = ['nodejs-22_x', 'pnpm']
+nixPkgs = ['nodejs', 'pnpm']
 
 [phases.install]
 cmd = "pnpm install -r"
