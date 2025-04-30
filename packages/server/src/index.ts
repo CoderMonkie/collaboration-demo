@@ -1,7 +1,28 @@
+// import express from 'express';
+// import expressWebsockets from "express-ws";
+// import path from 'path';
+//
 import { Server } from '@hocuspocus/server'
-import { Doc } from 'yjs';
-import * as Y from 'yjs';
 import { TiptapTransformer } from '@hocuspocus/transformer'
+
+/** express 构建静态托管服务，用于前后端同服部署 */
+const express = require('express');
+const expressWebsockets = require('express-ws');
+const path = require('path');
+
+const { app } = expressWebsockets(express());
+const staticDir = process.env.STATIC_DIR || path.resolve(__dirname, '../../client/dist');
+console.log('express static dir', __dirname + '\n', staticDir);
+app.use(express.static(staticDir));
+
+// 兼容 SPA 路由，所有未知路由都返回 index.html
+app.get('*', (req: { path: string; headers: any; }, res: { sendFile: (arg0: string) => void; }, next: () => any) => {
+  if (req.path.startsWith('/api') || (req.headers['upgrade'] && req.headers['upgrade'].toLowerCase() === 'websocket')) {
+    return next();
+  }
+  res.sendFile(path.join(staticDir, 'index.html'));
+});
+/** express 构建静态托管服务，用于前后端同服部署 */
 
 // 用于跟踪活跃用户
 const activeUsers = new Map()
@@ -80,9 +101,9 @@ function getAvailableColor(documentId: string) {
 type DocInitStatus = 'initializing' | 'initialized' | 'initializationFailed';
 
 const server = Server.configure({
-  port: process.env.PORT ? parseInt(process.env.PORT) : 1235,
+  // port: process.env.PORT ? parseInt(process.env.PORT) : 1235,
   // address: '127.0.0.1',
-  address: '0.0.0.0',
+  // address: '0.0.0.0',
   async onConnect(data) {
     const userId = data.requestParameters.get('userId') || 'anonymous'
     const documentId = data.documentName
@@ -389,11 +410,18 @@ const server = Server.configure({
   }
 })
 
+app.ws("/", (websocket: any, request: any) => {
+  server.handleConnection(websocket, request);
+});
+
 const startServer = async () => {
   try {
     console.log('正在启动服务器...')
-    await server.listen()
-    console.log('服务器启动成功 - 监听地址: ws://127.0.0.1:1234')
+    // await server.listen()
+    app.listen(process.env.PORT ? parseInt(process.env.PORT) : 1235, '0.0.0.0', () => {
+      console.log(`服务器启动成功 - 监听地址: http://localhost:${process.env.PORT || 1235}`);
+    });
+    console.log('服务器启动成功')
   } catch (error) {
     console.error('服务器启动失败:', error)
     process.exit(1)

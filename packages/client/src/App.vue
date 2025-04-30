@@ -309,6 +309,7 @@ const connectToDocument = (document: IDocument) => {
         metadata.delete('waitForInitialization')
       }
     },
+    // @ts-ignore
     onMessage: ({message}) => {
       // console.log('客户端: 收到消息', message.data)
     },

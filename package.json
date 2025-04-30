@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "concurrently \"pnpm start:server\" \"pnpm start:client\"",
     "start:server": "pnpm -F server start",
-    "start:client": "pnpm -F client dev"
+    "start:client": "pnpm -F client dev",
+    "build": "pnpm -F client build"
   },
   "keywords": [
     "collaboration"
