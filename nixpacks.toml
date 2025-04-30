@@ -1,9 +1,16 @@
 # Railway Nixpacks configuration
 
-[phases]
-install = { command = "pnpm install -r" }
-build = { command = "pnpm build" }
-start = { command = "pnpm start:server" }
+[phases.setup]
+nixPkgs = ['nodejs-22_x', 'pnpm']
+
+[phases.install]
+cmd = "pnpm install -r"
+
+[phases.build]
+cmd = "pnpm build"
+
+[start]
+cmd = "pnpm start"
 
 [variables]
 NODE_ENV = "production"
