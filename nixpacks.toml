@@ -1,4 +1,7 @@
 # Railway Nixpacks configuration
+[providers.nodejs]
+version = "22"
+enablePnpm = true
 
 [phases.setup]
 nixPkgs = ['nodejs', 'nodePackages.pnpm', 'nodePackages.ts-node']
