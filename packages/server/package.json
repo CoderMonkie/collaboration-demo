@@ -22,5 +22,10 @@
     "ws": "^8.18.1",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.24"
+  },
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": "22",
+    "pnpm": ">=10.0.0"  
   }
 }
