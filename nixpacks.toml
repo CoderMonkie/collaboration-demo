@@ -1,5 +1,4 @@
 # Railway Nixpacks configuration
-providers = ["nodejs"]
 
 [phases.setup]
 nixPkgs = ['nodejs', 'nodePackages.pnpm', 'nodePackages.ts-node']
