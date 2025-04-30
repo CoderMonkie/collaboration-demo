@@ -1,7 +1,7 @@
 # Railway Nixpacks configuration
 
 [phases]
-install = { command = "pnpm install" }
+install = { command = "pnpm install -r" }
 build = { command = "pnpm build" }
 start = { command = "pnpm start:server" }
 
