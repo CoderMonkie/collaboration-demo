@@ -410,7 +410,7 @@ const server = Server.configure({
   }
 })
 
-app.ws("/", (websocket: any, request: any) => {
+app.ws("/ws", (websocket: any, request: any) => {
   server.handleConnection(websocket, request);
 });
 
